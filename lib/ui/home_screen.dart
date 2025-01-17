@@ -4,9 +4,18 @@ import 'package:flutter/material.dart';
 import 'package:resep_makanan2/services/session_service.dart';
 import 'package:http/http.dart' as http;
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
+  @override
+  _HomeScreenState createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
   SessionService _sessionService = SessionService();
-  Future<List<dynamic>> tampilData() async {
+  TextEditingController _searchController = TextEditingController();
+  List<dynamic> _allRecipes = [];
+  List<dynamic> _filteredRecipes = [];
+
+  Future<void> fetchRecipes() async {
     final token = await _sessionService.getToken();
     final response = await http
         .get(Uri.parse("https://recipe.incube.id/api/recipes"), headers: {
@@ -16,42 +25,74 @@ class HomeScreen extends StatelessWidget {
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body)['data']['data'];
-      return data;
+      setState(() {
+        _allRecipes = data;
+        _filteredRecipes = data;
+      });
     } else {
       throw Exception('Failed to load recipes');
     }
   }
 
   @override
+  void initState() {
+    super.initState();
+    fetchRecipes();
+    _searchController.addListener(() {
+      filterRecipes();
+    });
+  }
+
+  void filterRecipes() {
+    final query = _searchController.text.toLowerCase();
+    setState(() {
+      _filteredRecipes = _allRecipes.where((recipe) {
+        final title = recipe['title'].toLowerCase();
+        return title.contains(query);
+      }).toList();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-        appBar: AppBar(
-          title: Text("Home"),
-        ),
-        body: FutureBuilder<List<dynamic>>(
-            future: tampilData(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return Center(child: CircularProgressIndicator());
-              } else if (snapshot.hasError) {
-                return Center(child: Text('Error: ${snapshot.error}'));
-              } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                return Center(child: Text('No Recipes Found'));
-              } else {
-                final recipe = snapshot.data!;
-                return ListView.builder(
-                  itemCount: recipe.length,
-                  itemBuilder: (context, index) {
-                    return Card(
-                      child: ListTile(
-                        leading: Image.network("${recipe[index]['photo_url']}"),
-                        title: Text("${recipe[index]['title']}"),
-                        subtitle: Text("by ${recipe[index]['user']['name']}"),
-                      ),
-                    );
-                  },
-                );
-              }
-            }));
+      appBar: AppBar(
+        title: Text("Home"),
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Cari resep...',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8.0),
+                ),
+                prefixIcon: Icon(Icons.search),
+              ),
+            ),
+          ),
+          Expanded(
+            child: _filteredRecipes.isEmpty
+                ? Center(child: CircularProgressIndicator())
+                : ListView.builder(
+                    itemCount: _filteredRecipes.length,
+                    itemBuilder: (context, index) {
+                      final recipe = _filteredRecipes[index];
+                      return Card(
+                        child: ListTile(
+                          leading: Image.network("${recipe['photo_url']}"),
+                          title: Text("${recipe['title']}"),
+                          subtitle: Text("by ${recipe['user']['name']}"),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
   }
 }
